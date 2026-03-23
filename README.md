@@ -22,9 +22,9 @@ FluentBooking's booking form renders a static price table (e.g. *Quantity: 1 / 1
 
 | Guests | Quantity | Price |
 |---|---|---|
-| Main booker only | 1 | 15,00 CHF |
-| + 1 additional child | 2 | 30,00 CHF |
-| + 2 additional children | 3 | 45,00 CHF |
+| Main booker only | 1 | 15,00 $ |
+| + 1 additional child | 2 | 30,00 $ |
+| + 2 additional children | 3 | 45,00 $ |
 
 ---
 
