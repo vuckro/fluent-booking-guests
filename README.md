@@ -4,28 +4,36 @@ A lightweight WordPress plugin that makes **FluentBooking group events** bill an
 
 ## The problem
 
-FluentBooking's booking form renders a static price table (e.g. *Quantity: 1 / 15,00 CHF*) that never updates as guests are added via the **"Add another"** button. A user could add guests without the price changing, effectively booking extra spots at the single-person rate.
+FluentBooking's booking form has two issues with group events:
+
+1. **Price display**: The payment table shows a static price that never updates as guests are added.
+2. **Spot deduction**: If a guest row has a name but no email, FluentBooking's backend silently discards that guest. Only one booking is created instead of one per guest, so only one spot is deducted regardless of how many guests were added.
 
 ## What this plugin does
 
 | Layer | Behaviour |
 |---|---|
 | **Frontend JS** | Watches the form for guest row additions/removals and updates *Quantity*, *Price* and *Total* in real time. |
-| **Email pre-fill** | Pre-fills each additional guest's email field with the main booker's email, so the price updates as soon as the guest name is entered. |
-| **Validation** | Marks name and email fields as `required` on every additional guest row, preventing submission with incomplete guest data. |
-| **Backend PHP** | Hooks into `fluent_booking/booking_data` to guarantee `quantity` equals the total guest count before payment. |
+| **Frontend JS** | Pre-fills each additional guest's email from the main booker's email. |
+| **Frontend JS** | Marks name and email as `required` on every additional guest row. |
+| **Backend PHP** | Fills missing guest emails server-side before FluentBooking processes the booking, ensuring every guest with a name gets a valid email (`booker+guest1@domain.com`). |
+| **Backend PHP** | Ensures `quantity` equals the total guest count for payment. |
+
+### Spot deduction
+
+FluentBooking creates one booking record per guest (sharing a `group_id`), so each guest deducts one spot. The backend email fill ensures no guest is silently dropped, so **1 main + 2 guests = 3 bookings = 3 spots deducted**.
 
 ### Example
 
-| Guests | Quantity | Price |
-|---|---|---|
-| Main booker only | 1 | 15,00 CHF |
-| + 1 guest | 2 | 30,00 CHF |
-| + 2 guests | 3 | 45,00 CHF |
+| Guests | Quantity | Price | Spots deducted |
+|---|---|---|---|
+| Main booker only | 1 | 15,00 CHF | 1 |
+| + 1 guest | 2 | 30,00 CHF | 2 |
+| + 2 guests | 3 | 45,00 CHF | 3 |
 
 ## Important: native landing pages
 
-This plugin is **not designed for FluentBooking's native landing pages** (`?fluent-booking=calendar`). The script is automatically disabled on those pages. It only works when the booking widget is embedded via shortcode or block on a regular WordPress page.
+This plugin is **not designed for FluentBooking's native landing pages** (`?fluent-booking=calendar`). The frontend script is automatically disabled on those pages. It only works when the booking widget is embedded via shortcode or block on a regular WordPress page. The backend email fill still applies on all pages to prevent data loss.
 
 ## Requirements
 
@@ -44,41 +52,37 @@ This plugin is **not designed for FluentBooking's native landing pages** (`?flue
 
 ### Frontend (`assets/js/booking-pricing.js`)
 
-A `MutationObserver` watches every `.fcal_booking_form_wrap` element. On any child-list change (guest added/removed, form re-rendered), it:
+A `MutationObserver` watches every `.fcal_booking_form_wrap` element. On any DOM change (guest added/removed), it:
 
 1. Counts guest rows (`.fcal_multi_guest_input`) and computes `totalGuests = 1 + rows`.
-2. Updates each `<tbody>` item row: sets the quantity cell and recalculates `unitPrice x totalGuests`.
-3. Updates the `<tfoot>` total via the `.fcal_payment_amount` span.
+2. Updates each `<tbody>` item row: quantity cell and `unitPrice x totalGuests`.
+3. Updates the `<tfoot>` total via `.fcal_payment_amount`.
 4. Pre-fills empty guest email fields with the main booker's email.
 5. Sets `required` on all inputs inside guest rows.
 
-Price parsing handles multiple locale formats (`15,00 CHF`, `$15.00`, `1.234,56`).
-
 ### Backend (`cooms-fluent-multireservation.php`)
 
-- Skips loading the script on FluentBooking native landing pages (`?fluent-booking` query parameter).
-- The `fluent_booking/booking_data` filter (priority 20) sets `$bookingData['quantity']` to `count($bookingData['email'])` for multi-guest events when the core hasn't set it yet.
+1. **Email fill** (`wp_ajax` priority 1): Before FluentBooking reads the POST data, patches `$_REQUEST['guests']` so every guest with a name gets an email derived from the main booker's address (`local+guestN@domain`). This prevents FluentBooking's `array_filter` from silently dropping guests.
 
-### Spot deduction
-
-No extra code needed. FluentBooking creates one booking record per guest for group events (sharing a `group_id`), so each guest deducts one spot automatically.
+2. **Quantity safety** (`fluent_booking/booking_data` priority 20): Sets `quantity = count(emails)` for multi-guest events when not already set by the core.
 
 ## Changelog
 
+### 2.2.0
+- Fixed: spot deduction — guests with missing emails are no longer silently dropped by the backend. The plugin now fills missing guest emails server-side before FluentBooking processes the booking.
+- Documented native landing page limitation.
+
 ### 2.1.0
-- Added: pre-fill guest email from the main booker's email field.
+- Added: pre-fill guest email from the main booker's email field (frontend).
 - Added: script disabled on FluentBooking native landing pages.
-- Removed: "/ personne" label feature.
-- Simplified: extracted `nativeSetter` once, inlined `refresh` callback.
 
 ### 2.0.0
-- Rewritten: simplified codebase (~100 lines JS, ~50 lines PHP).
-- Fixed: total row not updating (was looking for `<td>` instead of `<th>` / `.fcal_payment_amount`).
+- Rewritten: simplified codebase.
+- Fixed: total row not updating.
 - Added: name and email fields marked `required` on additional guest rows.
 
 ### 1.1.0
 - Added: automatic placeholder email injection on new guest rows.
-- Added: immediate table update on guest row addition.
 
 ### 1.0.0
 - Initial release.
