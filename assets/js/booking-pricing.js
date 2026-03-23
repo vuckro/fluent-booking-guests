@@ -1,14 +1,11 @@
 /**
  * FluentBooking - Group Reservation Pricing
  *
- * Watches for guest rows (.fcal_multi_guest_input) being added or removed,
- * updates the payment summary table (unit price x total guests),
- * pre-fills guest email from the main booker, and enforces required fields.
+ * Updates the payment summary table (unit price x total guests)
+ * and enforces required name + email on each additional guest.
  */
 (function () {
     'use strict';
-
-    // -- Price helpers --------------------------------------------------------
 
     function parseAmount(text) {
         if (!text) return null;
@@ -29,8 +26,6 @@
         if (/\d,\d/.test(template)) str = str.replace('.', ',');
         return template.replace(/[\d]+[.,\d]*/, str);
     }
-
-    // -- Payment table --------------------------------------------------------
 
     function updateTable(form) {
         var table = form.querySelector('.fcal_payment_items_table');
@@ -69,28 +64,6 @@
         }
     }
 
-    // -- Guest email pre-fill -------------------------------------------------
-
-    var nativeSetter = Object.getOwnPropertyDescriptor(
-        window.HTMLInputElement.prototype, 'value'
-    ).set;
-
-    function prefillGuestEmails(form) {
-        var mainInput = form.querySelector(
-            'input[type="email"]:not(.fcal_multi_guest_input input)'
-        );
-        var mainEmail = mainInput ? mainInput.value.trim() : '';
-        if (!mainEmail) return;
-
-        form.querySelectorAll('.fcal_multi_guest_input input[type="email"]').forEach(function (input) {
-            if (input.value.trim()) return;
-            nativeSetter.call(input, mainEmail);
-            input.dispatchEvent(new Event('input', { bubbles: true }));
-        });
-    }
-
-    // -- Required fields ------------------------------------------------------
-
     function enforceRequired(form) {
         form.querySelectorAll('.fcal_multi_guest_input input').forEach(function (input) {
             if (!input.hasAttribute('required')) {
@@ -99,23 +72,19 @@
         });
     }
 
-    // -- Observer -------------------------------------------------------------
-
     function observe(form) {
         if (form.dataset.fbgrp) return;
         form.dataset.fbgrp = '1';
 
         var timer = null;
-        function refresh() {
+        new MutationObserver(function () {
             clearTimeout(timer);
             timer = setTimeout(function () {
                 updateTable(form);
                 enforceRequired(form);
-                prefillGuestEmails(form);
             }, 80);
-        }
+        }).observe(form, { childList: true, subtree: true });
 
-        new MutationObserver(refresh).observe(form, { childList: true, subtree: true });
         updateTable(form);
     }
 
