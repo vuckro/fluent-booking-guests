@@ -1,7 +1,8 @@
 /**
  * FluentBooking - Group Reservation Pricing
  *
- * Updates the payment summary table (unit price x total guests)
+ * Updates the payment summary table (unit price x total guests),
+ * pre-fills guest email from the main booker's email,
  * and enforces required name + email on each additional guest.
  */
 (function () {
@@ -64,6 +65,31 @@
         }
     }
 
+    function prefillGuestEmails(form) {
+        var mainEmail = form.querySelector('input[type="email"][placeholder]');
+        if (!mainEmail || !mainEmail.value) return;
+
+        var bookerEmail = mainEmail.value.trim();
+        if (!bookerEmail) return;
+
+        var at = bookerEmail.indexOf('@');
+        if (at < 1) return;
+
+        var local = bookerEmail.substring(0, at).split('+')[0];
+        var domain = bookerEmail.substring(at + 1);
+
+        form.querySelectorAll('.fcal_multi_guest_input').forEach(function (row, i) {
+            var emailInput = row.querySelector('input[type="email"]');
+            if (!emailInput || emailInput.value) return;
+
+            var generated = local + '+Invite' + (i + 1) + '@' + domain;
+            emailInput.value = generated;
+
+            // Trigger Vue/React reactivity
+            emailInput.dispatchEvent(new Event('input', { bubbles: true }));
+        });
+    }
+
     function enforceRequired(form) {
         form.querySelectorAll('.fcal_multi_guest_input input').forEach(function (input) {
             if (!input.hasAttribute('required')) {
@@ -81,6 +107,7 @@
             clearTimeout(timer);
             timer = setTimeout(function () {
                 updateTable(form);
+                prefillGuestEmails(form);
                 enforceRequired(form);
             }, 80);
         }).observe(form, { childList: true, subtree: true });

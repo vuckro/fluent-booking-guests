@@ -14,8 +14,10 @@ FluentBooking's booking form has two issues with group events:
 | Layer | Behaviour |
 |---|---|
 | **Frontend JS** | Watches the form for guest additions/removals and updates *Quantity*, *Price* and *Total* in real time. |
+| **Frontend JS** | Pre-fills each guest's email from the main booker's email (`booker+Invite1@domain.com`). |
 | **Frontend JS** | Marks name and email as `required` on every additional guest row. |
-| **Backend PHP** | Fills missing guest emails server-side (`booker+Invite1@domain.com`) so FluentBooking creates one booking per guest. |
+| **Backend PHP** | Fills missing guest emails server-side as a safety net. |
+| **Backend PHP** | Tags each guest booking with "Invité par {name} ({email})" in the internal note for easy back-office identification. |
 
 ### How spots are deducted
 
@@ -59,17 +61,22 @@ A `MutationObserver` watches every `.fcal_booking_form_wrap` element. On any DOM
 1. Counts guest rows: `totalGuests = 1 + .fcal_multi_guest_input count`.
 2. Updates each payment table row: `quantity = totalGuests`, `price = unitPrice × totalGuests`.
 3. Updates the total in `<tfoot> .fcal_payment_amount`.
-4. Sets `required` on all guest row inputs.
+4. Pre-fills empty guest email fields with `booker+InviteN@domain.com`.
+5. Sets `required` on all guest row inputs.
 
 ### Backend (`cooms-fluent-multireservation.php`)
 
-Hooks into `wp_ajax_fluent_cal_schedule_meeting` at **priority 1** (FluentBooking runs at 10). Patches `$_REQUEST['guests']` so every guest with a name gets a generated email. This prevents FluentBooking's `array_filter` from dropping guests without emails.
+1. **Email fill** (`wp_ajax` priority 1): Patches `$_REQUEST['guests']` so every guest with a name gets a generated email. Prevents FluentBooking's `array_filter` from dropping guests.
+2. **Guest tagging** (`fluent_booking/after_booking_scheduled`): For group bookings, compares each booking's email against the original booker. If different, writes "Invité par {name} ({email})" into the `internal_note` field for easy back-office identification.
 
 ## Changelog
 
+### 3.1.0
+- Added: "Invité par {name} ({email})" internal note on guest bookings for back-office clarity.
+- Added: frontend email pre-fill (`booker+InviteN@domain.com`) so the email field can be hidden via CSS.
+
 ### 3.0.0
-- Simplified: removed `fluent_booking/booking_data` filter (unnecessary — FluentBooking handles quantity natively for group events).
-- Simplified: removed frontend email pre-fill (backend handles it).
+- Simplified: removed unnecessary `fluent_booking/booking_data` filter.
 - Confirmed: 1 main + N guests = N+1 bookings = N+1 spots deducted.
 
 ### 2.2.0
