@@ -2,8 +2,8 @@
  * FluentBooking - Group Reservation Pricing
  *
  * Watches for guest rows (.fcal_multi_guest_input) being added or removed,
- * updates the payment summary table (unit price × total guests),
- * and enforces required name + email on each additional guest.
+ * updates the payment summary table (unit price x total guests),
+ * pre-fills guest email from the main booker, and enforces required fields.
  */
 (function () {
     'use strict';
@@ -30,7 +30,7 @@
         return template.replace(/[\d]+[.,\d]*/, str);
     }
 
-    // -- Payment table update -------------------------------------------------
+    // -- Payment table --------------------------------------------------------
 
     function updateTable(form) {
         var table = form.querySelector('.fcal_payment_items_table');
@@ -39,7 +39,6 @@
         var guests = 1 + form.querySelectorAll('.fcal_multi_guest_input').length;
         var grandTotal = 0;
 
-        // Update item rows in <tbody> (cells are <td>).
         table.querySelectorAll('tbody tr').forEach(function (row) {
             var cells = row.querySelectorAll('td');
             if (cells.length < 3) return;
@@ -61,8 +60,6 @@
             cells[2].textContent = formatAmount(line, row.dataset.priceTpl);
         });
 
-        // Update total row in <tfoot>. The amount lives inside
-        // <th><span class="fcal_payment_amount">...</span></th>.
         var amountEl = table.querySelector('tfoot .fcal_payment_amount');
         if (amountEl) {
             if (!amountEl.dataset.totalTpl) {
@@ -72,15 +69,33 @@
         }
     }
 
-    // -- Guest field validation -----------------------------------------------
+    // -- Guest email pre-fill -------------------------------------------------
+
+    var nativeSetter = Object.getOwnPropertyDescriptor(
+        window.HTMLInputElement.prototype, 'value'
+    ).set;
+
+    function prefillGuestEmails(form) {
+        var mainInput = form.querySelector(
+            'input[type="email"]:not(.fcal_multi_guest_input input)'
+        );
+        var mainEmail = mainInput ? mainInput.value.trim() : '';
+        if (!mainEmail) return;
+
+        form.querySelectorAll('.fcal_multi_guest_input input[type="email"]').forEach(function (input) {
+            if (input.value.trim()) return;
+            nativeSetter.call(input, mainEmail);
+            input.dispatchEvent(new Event('input', { bubbles: true }));
+        });
+    }
+
+    // -- Required fields ------------------------------------------------------
 
     function enforceRequired(form) {
-        form.querySelectorAll('.fcal_multi_guest_input').forEach(function (row) {
-            row.querySelectorAll('input[type="text"], input[type="email"]').forEach(function (input) {
-                if (!input.hasAttribute('required')) {
-                    input.setAttribute('required', '');
-                }
-            });
+        form.querySelectorAll('.fcal_multi_guest_input input').forEach(function (input) {
+            if (!input.hasAttribute('required')) {
+                input.setAttribute('required', '');
+            }
         });
     }
 
@@ -91,15 +106,16 @@
         form.dataset.fbgrp = '1';
 
         var timer = null;
-
-        new MutationObserver(function () {
+        function refresh() {
             clearTimeout(timer);
             timer = setTimeout(function () {
                 updateTable(form);
                 enforceRequired(form);
+                prefillGuestEmails(form);
             }, 80);
-        }).observe(form, { childList: true, subtree: true });
+        }
 
+        new MutationObserver(refresh).observe(form, { childList: true, subtree: true });
         updateTable(form);
     }
 

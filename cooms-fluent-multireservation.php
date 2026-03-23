@@ -2,8 +2,8 @@
 /**
  * Plugin Name:  FluentBooking - Group Reservation Pricing
  * Plugin URI:   https://github.com/vuckro/fluent-booking-guests
- * Description:  Multiplies the payment total by the number of guests and ensures the correct quantity reaches the payment order.
- * Version:      2.0.0
+ * Description:  Multiplies the payment total by the number of guests, pre-fills guest emails, enforces required fields, and ensures the correct quantity reaches the payment order.
+ * Version:      2.1.0
  * Author:       WaasKit
  * Author URI:   https://waaskit.com
  * Requires PHP: 7.4
@@ -12,10 +12,15 @@
 
 defined( 'ABSPATH' ) || exit;
 
-define( 'FBGRP_VERSION', '2.0.0' );
+define( 'FBGRP_VERSION', '2.1.0' );
 define( 'FBGRP_URL', plugin_dir_url( __FILE__ ) );
 
 add_action( 'wp_enqueue_scripts', function () {
+    // Do not load on FluentBooking native landing pages (?fluent-booking=calendar).
+    if ( isset( $_GET['fluent-booking'] ) ) {
+        return;
+    }
+
     wp_enqueue_script(
         'fbgrp-pricing',
         FBGRP_URL . 'assets/js/booking-pricing.js',
