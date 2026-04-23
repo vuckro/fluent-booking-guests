@@ -1,6 +1,6 @@
 <?php
 /**
- * Plugin Name:  FluentBooking - Réservations de groupe
+ * Plugin Name:  FluentBooking - Group Reservation
  * Plugin URI:   https://github.com/vuckro/fluent-booking-guests
  * Description:  Per-event toggles for FluentBooking group events: spot-per-guest, per-person pricing, hide guest emails.
  * Version:      3.3.0
