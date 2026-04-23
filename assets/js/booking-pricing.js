@@ -1,12 +1,49 @@
 /**
- * FluentBooking - Group Reservation Pricing
+ * FluentBooking - Réservations de groupe
  *
- * Updates the payment summary table (unit price x total guests),
- * pre-fills guest email from the main booker's email,
- * and enforces required name + email on each additional guest.
+ * Per-event features driven by `window.fbgrpConfig`:
+ *   - priceEvents[]     : event IDs with "Prix par personne"
+ *   - hideEmailEvents[] : event IDs with "Masquer l'email des invités"
+ *
+ * On pages where at least one matching event is rendered, we:
+ *   1. Multiply the payment table amounts by the guest count (if price enabled).
+ *   2. Pre-fill guest emails so the hidden field still carries a value (if hide enabled).
+ *   3. Strip `required` from hidden email inputs so HTML5 validation never blocks submit.
+ *   4. Keep names required on guest rows when price-per-person is on.
  */
 (function () {
     'use strict';
+
+    var cfg = window.fbgrpConfig || {};
+
+    function toIntList(arr) {
+        return (arr || []).map(function (v) { return parseInt(v, 10); })
+                          .filter(function (v) { return !isNaN(v); });
+    }
+
+    var priceEvents = toIntList(cfg.priceEvents);
+    var hideEvents  = toIntList(cfg.hideEmailEvents);
+
+    if (!priceEvents.length && !hideEvents.length) return;
+
+    // Collect event IDs rendered on the current page by scanning the globals
+    // Fluent Booking emits per event (`fcal_public_vars_{calendar_id}_{event_id}`).
+    function pageHasAny(enabledIds) {
+        if (!enabledIds.length) return false;
+        for (var key in window) {
+            if (key.indexOf('fcal_public_vars_') !== 0) continue;
+            var eid = parseInt(key.split('_').pop(), 10);
+            if (enabledIds.indexOf(eid) !== -1) return true;
+        }
+        return false;
+    }
+
+    var active = { price: false, hide: false };
+    function refreshActive() {
+        active.price = pageHasAny(priceEvents);
+        active.hide  = pageHasAny(hideEvents);
+        return active.price || active.hide;
+    }
 
     function parseAmount(text) {
         if (!text) return null;
@@ -28,12 +65,13 @@
         return template.replace(/[\d]+[.,\d]*/, str);
     }
 
-    function updateTable(form) {
+    function updatePriceTable(form) {
         var table = form.querySelector('.fcal_payment_items_table');
         if (!table) return;
 
         var guests = 1 + form.querySelectorAll('.fcal_multi_guest_input').length;
         var grandTotal = 0;
+        var lineItemAmounts = [];
 
         table.querySelectorAll('tbody tr').forEach(function (row) {
             var cells = row.querySelectorAll('td');
@@ -54,15 +92,24 @@
             grandTotal += line;
             cells[1].textContent = guests;
             cells[2].textContent = formatAmount(line, row.dataset.priceTpl);
+
+            var priceSpan = cells[2].querySelector('.fcal_payment_amount');
+            if (priceSpan) lineItemAmounts.push(priceSpan);
         });
 
-        var amountEl = table.querySelector('tfoot .fcal_payment_amount');
-        if (amountEl) {
-            if (!amountEl.dataset.totalTpl) {
-                amountEl.dataset.totalTpl = amountEl.textContent.trim();
+        // Update every summary amount in the form (Subtotal, Total, …) except
+        // the line-item prices we just wrote. Fluent Booking Pro reuses the
+        // same `.fcal_payment_amount` class for items and totals, and the
+        // "Total:" line can live outside the items table.
+        form.querySelectorAll('.fcal_payment_amount').forEach(function (el) {
+            if (lineItemAmounts.indexOf(el) !== -1) return;
+            if (el.closest('.fcal_payment_items_table tbody tr td:nth-child(3)')) return;
+
+            if (!el.dataset.totalTpl) {
+                el.dataset.totalTpl = el.textContent.trim();
             }
-            amountEl.textContent = formatAmount(grandTotal, amountEl.dataset.totalTpl);
-        }
+            el.textContent = formatAmount(grandTotal, el.dataset.totalTpl);
+        });
     }
 
     function prefillGuestEmails(form) {
@@ -82,20 +129,32 @@
             var emailInput = row.querySelector('input[type="email"]');
             if (!emailInput || emailInput.value) return;
 
-            var generated = local + '+Invite' + (i + 1) + '@' + domain;
-            emailInput.value = generated;
-
-            // Trigger Vue/React reactivity
+            emailInput.value = local + '+Invite' + (i + 1) + '@' + domain;
             emailInput.dispatchEvent(new Event('input', { bubbles: true }));
         });
     }
 
-    function enforceRequired(form) {
-        form.querySelectorAll('.fcal_multi_guest_input input').forEach(function (input) {
-            if (!input.hasAttribute('required')) {
-                input.setAttribute('required', '');
-            }
+    function stripEmailRequired(form) {
+        form.querySelectorAll('.fcal_multi_guest_input input[type="email"]').forEach(function (input) {
+            if (input.hasAttribute('required')) input.removeAttribute('required');
         });
+    }
+
+    function enforceNameRequired(form) {
+        form.querySelectorAll('.fcal_multi_guest_input input').forEach(function (input) {
+            var type = (input.getAttribute('type') || 'text').toLowerCase();
+            if (type === 'email') return;
+            if (!input.hasAttribute('required')) input.setAttribute('required', '');
+        });
+    }
+
+    function applyToForm(form) {
+        if (active.price) updatePriceTable(form);
+        if (active.hide) {
+            prefillGuestEmails(form);
+            stripEmailRequired(form);
+        }
+        if (active.price) enforceNameRequired(form);
     }
 
     function observe(form) {
@@ -105,20 +164,19 @@
         var timer = null;
         new MutationObserver(function () {
             clearTimeout(timer);
-            timer = setTimeout(function () {
-                updateTable(form);
-                prefillGuestEmails(form);
-                enforceRequired(form);
-            }, 80);
+            timer = setTimeout(function () { applyToForm(form); }, 80);
         }).observe(form, { childList: true, subtree: true });
 
-        updateTable(form);
+        applyToForm(form);
     }
 
     function init() {
+        if (!refreshActive()) return;
+
         document.querySelectorAll('.fcal_booking_form_wrap').forEach(observe);
 
         new MutationObserver(function () {
+            if (!refreshActive()) return;
             document.querySelectorAll('.fcal_booking_form_wrap:not([data-fbgrp])').forEach(observe);
         }).observe(document.body, { childList: true, subtree: true });
     }

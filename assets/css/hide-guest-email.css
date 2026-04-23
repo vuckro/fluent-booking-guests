@@ -1,0 +1,9 @@
+/**
+ * Hides the email input on additional guest rows.
+ * The backend fills in a generated email automatically via
+ * fbgrp_fill_guest_emails(), so no data is lost.
+ */
+.fcal_multi_guest_input input[type="email"],
+.fcal_multi_guest_input .fcal_form_item:has(input[type="email"]) {
+    display: none !important;
+}
