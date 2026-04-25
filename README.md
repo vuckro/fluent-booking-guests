@@ -42,6 +42,15 @@ FluentBooking creates one booking record per guest (sharing a `group_id`). Each 
 | + 1 guest | 2 | $30.00 |
 | + 3 guests | 4 | $60.00 |
 
+### Coupons
+
+Applied coupons are recomputed against the multiplied subtotal so the math stays consistent:
+
+- **Percentage coupons** (e.g. *30%*) re-apply against the scaled subtotal — `subtotal × rate / 100`.
+- **Fixed-amount coupons** (e.g. *30€ off*) keep their original value, capped at the scaled subtotal — so a `-30€` coupon shows as `-20€` on a `20€` order, but as the full `-30€` on a `35€` order.
+
+The plugin reads the actual coupon configuration from FluentBooking's `apply_coupon` AJAX response, so it always knows the real type and value rather than the FluentBooking-displayed amount (which is capped at the unit subtotal).
+
 ## Known limitation — *Prix par personne* is display-only
 
 The **Prix par personne** toggle only multiplies the numbers rendered on the booking form. It does **not** modify the amount actually charged by Stripe or stored on the order: FluentBooking's native payment flow still uses the event's configured price as the charge amount.
@@ -74,6 +83,7 @@ Loaded only when at least one event opts in to *Prix par personne* or *Masquer l
 A `MutationObserver` on each `.fcal_booking_form_wrap` triggers a debounced update that, depending on active flags:
 
 - Rewrites every `.fcal_payment_amount` in the payment summary (line items, Subtotal, Total) using `unit × (1 + guest_count)`. The update walks *all* amount spans in the form (not only `<tfoot>`) so the final *Total:* line stays in sync even when it lives outside the items table.
+- Recomputes any applied coupon against the scaled subtotal: `XMLHttpRequest.prototype.send` is wrapped to capture each coupon's real `discount_type` / `discount` / `max_discount_amount` from FluentBooking's `apply_coupon` AJAX response, then percentage coupons re-apply against the multiplied subtotal and fixed-amount coupons cap at the multiplied subtotal instead of the unit subtotal.
 - Pre-fills empty guest email fields with `booker+InviteN@domain.com`.
 - Strips `required` from hidden email inputs so HTML5 validation never blocks submission.
 - Enforces `required` on guest name inputs (never on email).
@@ -107,6 +117,10 @@ fluent-booking-guests/
 ```
 
 ## Changelog
+
+### 3.3.6
+- Fixed *Prix par personne* total being wrong when a coupon was applied: the plugin now intercepts FluentBooking's `apply_coupon` AJAX response to capture the real coupon configuration (type + value), then recomputes the discount against the multiplied subtotal so percentage coupons scale and fixed-amount coupons cap correctly.
+- Refactored `booking-pricing.js` into smaller focused functions (`scaleLineItem`, `applyCouponRow`, `findDiscountCell`, `getCouponCode`, `computeDiscount`, …) for readability.
 
 ### 3.3.0
 - Added **Masquer l'email des invités** toggle — hides the email field on guest rows and generates the address server-side so no data is lost.
